@@ -74,6 +74,7 @@ class Dataset():
                                                                 ['gt'][batch:batch + batch_size]]
                     pbar.update(batch_size)
 
+    # initialising datasets as dictionaries
     def _init_dataset(self):
         dataset = dict()
 
