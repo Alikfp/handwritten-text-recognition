@@ -210,7 +210,7 @@ class Dataset():
 
         return dataset
 
-    # New Method
+    # New Method for reading "Mix language"
     def _mix (self) :
         """mix_language dataset reader"""
         
