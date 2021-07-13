@@ -8,10 +8,9 @@ import random
 import numpy as np
 import multiprocessing
 import xml.etree.ElementTree as ET
-
 from glob import glob
 from tqdm import tqdm
-from data import preproc as pp
+from data import preproc as pp     # Editted from : from data import preproc as pp 
 from functools import partial
 
 
@@ -26,31 +25,37 @@ class Dataset():
 
     def read_partitions(self):
         """Read images and sentences from dataset"""
-
+        # dataset = Dataset._<DATSET_NAME>
         dataset = getattr(self, f"_{self.name}")()
 
+        # if self.dataset == None
         if not self.dataset:
-            self.dataset = self._init_dataset()
+            # initialises a dictionary
+            self.dataset = self._init_dataset() 
 
+        
         for y in self.partitions:
             self.dataset[y]['dt'] += dataset[y]['dt']
             self.dataset[y]['gt'] += dataset[y]['gt']
 
     def save_partitions(self, target, image_input_size, max_text_length):
         """Save images and sentences from dataset"""
-
+        # make a new directory to save our file in
         os.makedirs(os.path.dirname(target), exist_ok=True)
         total = 0
 
         with h5py.File(target, "w") as hf:
-            for pt in self.partitions:
+            for pt in self.partitions:  
                 self.dataset[pt] = self.check_text(self.dataset[pt], max_text_length)
-                size = (len(self.dataset[pt]['dt']),) + image_input_size[:2]
+                # size = (#images, 1024, 128, 1)
+                size = (len(self.dataset[pt]['dt']),) + image_input_size[:2] 
                 total += size[0]
 
+                # dummies used for initialising datasets
                 dummy_image = np.zeros(size, dtype=np.uint8)
                 dummy_sentence = [("c" * max_text_length).encode()] * size[0]
 
+                # crating images/transcriptions datasets
                 hf.create_dataset(f"{pt}/dt", data=dummy_image, compression="gzip", compression_opts=9)
                 hf.create_dataset(f"{pt}/gt", data=dummy_sentence, compression="gzip", compression_opts=9)
 
@@ -61,6 +66,7 @@ class Dataset():
             for batch in range(0, len(self.dataset[pt]['gt']), batch_size):
                 images = []
 
+                # concurrenting the preprocessing stage
                 with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
                     r = pool.map(partial(pp.preprocess, input_size=image_input_size),
                                  self.dataset[pt]['dt'][batch:batch + batch_size])
@@ -74,11 +80,11 @@ class Dataset():
                                                                 ['gt'][batch:batch + batch_size]]
                     pbar.update(batch_size)
 
-    # initialising datasets as dictionaries
     def _init_dataset(self):
         dataset = dict()
 
         for i in self.partitions:
+            # each partition (train/validation/test) gets
             dataset[i] = {"dt": [], "gt": []}
 
         return dataset
@@ -172,8 +178,9 @@ class Dataset():
 
     def _bentham(self):
         """Bentham dataset reader"""
-
+        # source path
         source = os.path.join(self.source, "BenthamDatasetR0-GT")
+        # partitions path
         pt_path = os.path.join(source, "Partitions")
 
         paths = {"train": open(os.path.join(pt_path, "TrainLines.lst")).read().splitlines(),
@@ -184,14 +191,18 @@ class Dataset():
         gt = os.listdir(transcriptions)
         gt_dict = dict()
 
+        # gt = list of all transcriptions
+        # gets rid of the transcription formatting.
+        # gt_dict = { file_name : plain_text }
         for index, x in enumerate(gt):
-            text = " ".join(open(os.path.join(transcriptions, x)).read().splitlines())
+            text = " ".join(open(os.path.join(transcriptions, x)).read().splitlines()) # opens the transcriptions file
             text = html.unescape(text).replace("<gap/>", "")
             gt_dict[os.path.splitext(x)[0]] = " ".join(text.split())
 
         img_path = os.path.join(source, "Images", "Lines")
         dataset = self._init_dataset()
 
+        # making a dictionary of images and their corresponding transcription
         for i in self.partitions:
             for line in paths[i]:
                 dataset[i]['dt'].append(os.path.join(img_path, f"{line}.png"))
@@ -199,10 +210,59 @@ class Dataset():
 
         return dataset
 
+    # New Method
+    def _mix (self) :
+        """mix_language dataset reader"""
+        
+        authors = ['oeaw','Peirce','McGahern']
+        dataset = self._init_dataset() # dataset[i] = {"dt": [], "gt": []}
+        
+        # reading routine for each author
+        for auth in authors :
+
+            source = os.path.join(self.source, auth)
+            # list of all the items
+            all_files = [os.path.splitext(i)[0] for i in sorted(os.listdir(source)) if os.path.splitext(i)[1] == '.jpg']
+            
+            train_ratio, valid_ratio = round(len(all_files) * 0.7), round(len(all_files) * 0.85) # ratios can be modified
+            # split into train, valid & test sets
+            paths = {"train": all_files[:train_ratio],
+                    "valid": all_files[train_ratio:valid_ratio],
+                    "test": all_files[valid_ratio:]}
+            
+            gt_dict = dict()
+
+            # pair up all the address & texts in gt_dict
+            for item in sorted(os.listdir(source)) :
+                # open the text files
+                root, ext = os.path.splitext(item)[0], os.path.splitext(item)[1]
+                if ext == '.txt':
+                    text = " ".join(open(os.path.join(source, item)).read().splitlines()) # opens the transcriptions file
+                    text = html.unescape(text).replace("<gap/>", "")
+                    gt_dict[os.path.splitext(root)[0]] = " ".join(text.split())
+            
+            
+            
+            for pt in self.partitions :
+                for line in paths[pt] :
+                    dataset[pt]['dt'].append(os.path.join(source, line + ".jpg"))
+                    dataset[pt]['gt'].append(gt_dict[line])
+                    #print(line)
+                    #print(f'dt: {os.path.join(self.source, line + ".jpg")}')
+                    #print(f'gt: {gt_dict[line]}')
+                    #print()                    
+    
+        return dataset
+
+
+
+
     def _iam(self):
         """IAM dataset reader"""
 
-        pt_path = os.path.join(self.source, "largeWriterIndependentTextLineRecognitionTask")
+        # gets the IDs from here
+        pt_path = os.path.join(self.source, "largeWriterIndependentTextLineRecognitionTask") 
+        # splitting the data
         paths = {"train": open(os.path.join(pt_path, "trainset.txt")).read().splitlines(),
                  "valid": open(os.path.join(pt_path, "validationset1.txt")).read().splitlines() +
                  open(os.path.join(pt_path, "validationset2.txt")).read().splitlines(),
